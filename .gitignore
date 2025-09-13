@@ -1,0 +1,29 @@
+# venv & cache
+.venv/
+__pycache__/
+*.pyc
+
+# env & segreti
+.env
+.env.*
+*.pem
+*.ppk
+id_rsa*
+id_ed25519*
+
+# dati e modelli (non versionare file veri)
+data/
+models/
+!data/.gitkeep
+!models/.gitkeep
+
+# DB e binari pesanti
+*.db
+*.sqlite*
+*.pkl
+*.joblib
+
+# editor/OS
+.vscode/
+.idea/
+.DS_Store
