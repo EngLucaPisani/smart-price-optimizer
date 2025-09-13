@@ -1,0 +1,9 @@
+brand,category,size,base_cost,price
+alpha,shoes,42,35,79
+alpha,shoes,43,36,82
+beta,shoes,42,30,69
+beta,shoes,44,31,72
+alpha,bag,0,20,55
+beta,bag,0,18,49
+gamma,shoes,41,34,77
+gamma,bag,0,22,58

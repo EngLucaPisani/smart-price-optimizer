@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+src/price_app/__init__.py
+src/price_app/app.py
+src/price_app/model.py
+src/smart_price_optimizer.egg-info/PKG-INFO
+src/smart_price_optimizer.egg-info/SOURCES.txt
+src/smart_price_optimizer.egg-info/dependency_links.txt
+src/smart_price_optimizer.egg-info/requires.txt
+src/smart_price_optimizer.egg-info/top_level.txt
