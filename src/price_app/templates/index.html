@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Smart Price Optimizer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+  <h1>Smart Price Optimizer</h1>
+  <form method="POST" action="/predict">
+    <label>Brand</label>
+    <select name="brand">
+      {% for b in brands %}<option value="{{b}}">{{b}}</option>{% endfor %}
+    </select><br><br>
+
+    <label>Category</label>
+    <select name="category">
+      {% for c in categories %}<option value="{{c}}">{{c}}</option>{% endfor %}
+    </select><br><br>
+
+    <label>Size (use 0 for bags)</label>
+    <input type="number" name="size" value="42"><br><br>
+
+    <label>Base cost</label>
+    <input type="number" step="0.01" name="base_cost" value="30"><br><br>
+
+    <button type="submit">Predict price</button>
+  </form>
+</body>
+</html>
