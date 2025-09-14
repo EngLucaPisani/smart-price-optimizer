@@ -1,22 +1,35 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Prediction</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-</head>
-<body>
-  <h2>Suggested price</h2>
-  <p><strong>{{ predicted }}</strong></p>
+{% extends "base.html" %}
+{% block title %}Prediction Result — Smart Price Optimizer{% endblock %}
+{% block content %}
 
-  <h3>Inputs</h3>
-  <ul>
-    <li>Brand: {{ brand }}</li>
-    <li>Category: {{ category }}</li>
-    <li>Size: {{ size }}</li>
-    <li>Base cost: {{ base_cost }}</li>
-  </ul>
+<section class="card">
+  <div class="card__body">
+    <h2 class="card__title m0">Prediction Result</h2>
+    <p class="card__subtitle">Here’s your estimated optimal price.</p>
 
-  <a href="/">← Back</a>
-</body>
-</html>
+    <div class="row row--2">
+      <div>
+        <h3 class="m0">Predicted price</h3>
+        <p class="mt8" style="font-size:1.6rem;font-weight:700">{{ predicted_price }}</p>
+      </div>
+      <div>
+        <h3 class="m0">Inputs</h3>
+        <pre class="mt8" style="white-space:pre-wrap">{{ inputs | tojson(indent=2) }}</pre>
+      </div>
+    </div>
+
+    {% if table %}
+      <h3 class="mt24 m0">Batch results</h3>
+      <div class="mt8" style="overflow:auto">
+        {{ table|safe }}
+      </div>
+    {% endif %}
+
+    <div class="mt24">
+      <a class="btn" href="{{ url_for('index') }}">New prediction</a>
+      <a class="btn btn--ghost" href="https://github.com/EngLucaPisani" target="_blank" rel="noopener">View code</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
