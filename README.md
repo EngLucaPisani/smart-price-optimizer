@@ -1,5 +1,8 @@
 # Smart Price Optimizer
 
+![Made with Flask](https://img.shields.io/badge/Flask-3.x-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+
 Smart Price Optimizer is a demo Flask application with a **Machine Learning model** that predicts optimized prices based on competitor data.  
 It provides a simple web interface to:
 
