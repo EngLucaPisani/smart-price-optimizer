@@ -1,0 +1,8 @@
+# Model comparison (lower MAE is better)
+| Model       | R2_train | MAE_train | R2_test | MAE_test |
+|-------------|---------:|----------:|--------:|---------:|
+| Linear      |    1.000 |      0.00 |   0.827 |     5.54 |
+| Ridge(1.0)  |    0.996 |      0.40 |   0.982 |     1.89 |
+| Lasso(0.1)  |    0.997 |      0.41 |   0.987 |     1.52 |
+
+**Selected:** Lasso(0.1)  (test MAE=1.52, R2=0.987)

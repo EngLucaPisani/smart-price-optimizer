@@ -2,11 +2,14 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Smart Price Optimizer</title>
+    <title>Predict Price</title>
     <style>
       body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; }
-      .btn { display:inline-block; padding:.7rem 1.1rem; border:1px solid #222; border-radius:10px; text-decoration:none; color:#222; margin-right:.6rem; }
-      .muted { color:#666; }
+      label { display:block; margin:.5rem 0; }
+      input { padding:.4rem; }
+      button { padding:.5rem .9rem; cursor:pointer; }
+      .btn { display:inline-block; padding:.6rem 1rem; border:1px solid #222; border-radius:10px; text-decoration:none; color:#222; }
+      nav a { margin-right:.6rem; }
       .flash { padding:.6rem .8rem; margin:.6rem 0; border-radius:8px; }
       .flash.success { background:#e6ffed; border:1px solid #b7ebc6; }
       .flash.error   { background:#ffecec; border:1px solid #f5b5b5; }
@@ -28,7 +31,20 @@
       {% endif %}
     {% endwith %}
 
-    <h1>Smart Price Optimizer</h1>
-    <p class="muted">Step 1: scarica il CSV di esempio → caricalo con i tuoi dati → Step 2: fai la previsione del prezzo.</p>
+    <h1>Predict Your Price</h1>
+
+    <form action="{{ url_for('predict') }}" method="post">
+      <label>Company
+        <input type="text" name="company" placeholder="Your brand" required>
+      </label>
+      <label>Product model
+        <input type="text" name="product_model" placeholder="Your model" required>
+      </label>
+      <label>Feature
+        <input type="text" name="feature" placeholder="e.g. 'pro', 'max'" required>
+      </label>
+      <br>
+      <button type="submit">Predict</button>
+    </form>
   </body>
 </html>

@@ -1,88 +1,167 @@
-from flask import Flask, render_template, request, jsonify
 from pathlib import Path
+from datetime import datetime
+from io import BytesIO, StringIO
+import csv
 import pandas as pd
+
+from flask import (
+    Flask, render_template, request, redirect, url_for,
+    flash, send_file, jsonify
+)
+from werkzeug.utils import secure_filename
 import joblib
-import numpy as np
 
-app = Flask(__name__)
+from .model import (
+    train_from_csv, load_model, MODEL_PATH,
+    DATA_DIR, REQUIRED_COLS
+)
 
-# Paths
-BASE = Path(__file__).resolve().parents[2]
-MODEL_PATH = BASE / "models" / "model.pkl"
+HERE = Path(__file__).resolve().parent
+TEMPLATES_DIR = HERE / "templates"
 
-# Lazy-loaded model
-_model = None
-def get_model():
-    global _model
-    if _model is None:
-        if not MODEL_PATH.exists():
-            raise FileNotFoundError(
-                f"Model not found at {MODEL_PATH}. "
-                "Train it first with: python src/price_app/model.py"
-            )
-        print(f"[INFO] Loading model: {MODEL_PATH}")
-        _model = joblib.load(MODEL_PATH)
-    return _model
+app = Flask(__name__, template_folder=str(TEMPLATES_DIR))
+app.secret_key = "dev-secret-change-me"  # cambia in produzione
 
-# Simple choices for the demo UI
-BRANDS = ["alpha", "beta", "gamma"]
-CATEGORIES = ["shoes", "bag"]
+# Dev helpers
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
+app.jinja_env.cache = {}
 
-@app.get("/health")
+@app.after_request
+def add_no_cache_headers(resp):
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+# Carica il modello se presente
+MODEL = load_model()
+
+# ----------------------
+#        ROUTES
+# ----------------------
+
+@app.route("/health", methods=["GET"])
 def health():
-    return "OK", 200
+    return jsonify({"status": "ok"}), 200
 
-@app.get("/")
+@app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html", brands=BRANDS, categories=CATEGORIES)
+    has_model = MODEL_PATH.exists()
+    return render_template("index.html", has_model=has_model)
 
-@app.post("/predict")
+@app.route("/download-sample", methods=["GET"])
+def download_sample():
+    """CSV di esempio da compilare."""
+    sample_rows = [
+        ["company", "product_model", "feature", "price"],
+        ["BrandA", "Alpha", "base", "99.9"],
+        ["BrandA", "Alpha", "pro",  "129.0"],
+        ["BrandB", "Beta",  "base", "109.0"],
+        ["BrandB", "Beta",  "max",  "159.0"],
+        ["BrandC", "Gamma", "pro",  "139.0"],
+    ]
+    sio = StringIO()
+    csv.writer(sio).writerows(sample_rows)
+    bio = BytesIO(sio.getvalue().encode("utf-8"))
+    bio.seek(0)
+    return send_file(bio, mimetype="text/csv", as_attachment=True,
+                     download_name="sample_competitors.csv")
+
+ALLOWED_EXTENSIONS = {"csv"}
+def allowed_file(fn: str) -> bool:
+    return "." in fn and fn.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route("/upload", methods=["GET", "POST"])
+def upload():
+    if request.method == "GET":
+        return render_template("upload.html", required_cols=REQUIRED_COLS)
+
+    # POST
+    if "file" not in request.files:
+        flash("No file part in request", "error")
+        return redirect(url_for("upload"))
+    file = request.files["file"]
+    if file.filename == "":
+        flash("No selected file", "error")
+        return redirect(url_for("upload"))
+    if not allowed_file(file.filename):
+        flash("Please upload a .csv file", "error")
+        return redirect(url_for("upload"))
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = DATA_DIR / f"{ts}__{secure_filename(file.filename)}"
+    file.save(dest)
+
+    try:
+        global MODEL
+        MODEL = train_from_csv(dest)
+        flash(f"Model trained from {dest.name}", "success")
+        return redirect(url_for("predict_form"))
+    except Exception as e:
+        flash(f"Training failed: {e}", "error")
+        return redirect(url_for("upload"))
+
+@app.route("/predict-form", methods=["GET"])
+def predict_form():
+    if not MODEL_PATH.exists():
+        flash("No trained model found. Upload a CSV first.", "error")
+        return redirect(url_for("upload"))
+    return render_template("predict.html")
+
+@app.route("/predict", methods=["POST"])
 def predict():
-    # Read form inputs
-    brand = request.form.get("brand")
-    category = request.form.get("category")
-    size = int(request.form.get("size") or 0)
-    base_cost = float(request.form.get("base_cost") or 0.0)
+    if not MODEL_PATH.exists():
+        flash("No trained model found. Upload a CSV first.", "error")
+        return redirect(url_for("upload"))
 
-    # Build a 2D table (DataFrame) with the exact training columns
-    row = {
-        "brand": brand,
-        "category": category,
-        "size": size,
-        "base_cost": base_cost,
-    }
-    X = pd.DataFrame([row], columns=["brand", "category", "size", "base_cost"])
+    company       = (request.form.get("company") or "").strip()
+    product_model = (request.form.get("product_model") or "").strip()
+    feature       = (request.form.get("feature") or "").strip()
 
-    # Predict
-    model = get_model()
-    y_hat = float(model.predict(X)[0])
-    suggested = np.round(y_hat, 2)
+    if not (company and product_model and feature):
+        flash("Please fill all fields (company, product model, feature).", "error")
+        return redirect(url_for("predict_form"))
 
-    return render_template(
-        "result.html",
-        brand=brand,
-        category=category,
-        size=size,
-        base_cost=base_cost,
-        predicted=suggested,
-    )
+    try:
+        model = joblib.load(MODEL_PATH)
 
-@app.post("/api/predict")
+        # ✅ Usa DataFrame invece di lista di dict
+        X = pd.DataFrame(
+            [[company, product_model, feature]],
+            columns=["company", "product_model", "feature"]
+        )
+
+        pred = model.predict(X)[0]
+
+        return render_template(
+            "result.html",
+            pred_value=round(float(pred), 4),
+            company=company,
+            product_model=product_model,
+            feature=feature,
+        )
+    except Exception as e:
+        flash(f"Prediction failed: {e}", "error")
+        return redirect(url_for("predict_form"))
+
+# (facoltativo) API JSON
+@app.route("/api/predict", methods=["POST"])
 def api_predict():
-    data = request.get_json(force=True) or {}
-    row = {
-        "brand": data.get("brand"),
-        "category": data.get("category"),
-        "size": int(data.get("size") or 0),
-        "base_cost": float(data.get("base_cost") or 0.0),
-    }
-    X = pd.DataFrame([row], columns=["brand", "category", "size", "base_cost"])
-
-    model = get_model()
-    y_hat = float(model.predict(X)[0])
-    return jsonify({"predicted_price": round(y_hat, 2)})
+    if not MODEL_PATH.exists():
+        return jsonify({"error": "model not trained"}), 400
+    payload = request.get_json(silent=True) or {}
+    try:
+        company       = (payload.get("company") or "").strip()
+        product_model = (payload.get("product_model") or "").strip()
+        feature       = (payload.get("feature") or "").strip()
+        if not (company and product_model and feature):
+            return jsonify({"error": "missing fields"}), 400
+        model = joblib.load(MODEL_PATH)
+        X = pd.DataFrame([[company, product_model, feature]],
+                         columns=["company", "product_model", "feature"])
+        pred = model.predict(X)[0]
+        return jsonify({"predicted_price": round(float(pred), 4)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    print("[BOOT] Import OK, about to run Flask…")
-    print("Starting Flask on http://0.0.0.0:8000")
-    app.run(debug=True, host="0.0.0.0", port=8000)
+    app.run(debug=True)

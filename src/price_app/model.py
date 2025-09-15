@@ -1,86 +1,97 @@
 from pathlib import Path
-import sys, traceback
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
-from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score, mean_absolute_error
-from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
 import joblib
 
-# Project root: .../smart-price-optimizer
-ROOT = Path(__file__).resolve().parents[2]
-DATA_CSV = ROOT / "data" / "train.csv"
-MODEL_DIR = ROOT / "models"
-MODEL_PATH = MODEL_DIR / "model.pkl"
+# Root del progetto
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-print(f"[INFO] ROOT       = {ROOT}")
-print(f"[INFO] DATA_CSV   = {DATA_CSV}")
-print(f"[INFO] MODEL_PATH = {MODEL_PATH}")
+# Dove salviamo i modelli
+MODELS_DIR = PROJECT_ROOT / "models"
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
+MODEL_PATH = MODELS_DIR / "model.pkl"
 
-def train():
-    try:
-        if not DATA_CSV.exists():
-            print(f"[ERROR] Missing dataset: {DATA_CSV}")
-            print("[HINT] Create data/train.csv with columns: brand,category,size,base_cost,price")
-            sys.exit(1)
+# Dove salviamo i CSV caricati
+DATA_DIR = PROJECT_ROOT / "data" / "uploads"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-        df = pd.read_csv(DATA_CSV)
-        print(f"[INFO] df.shape   = {df.shape}")
-        print(f"[INFO] df.columns = {list(df.columns)}")
-        if df.empty:
-            print("[ERROR] train.csv is empty")
-            sys.exit(1)
+# Colonne richieste (case-insensitive)
+REQUIRED_COLS = ["company", "product_model", "feature", "price"]
 
-        required = {"brand","category","size","base_cost","price"}
-        missing = required - set(df.columns)
-        if missing:
-            print(f"[ERROR] Missing columns in CSV: {missing}")
-            sys.exit(1)
+# Sinonimi -> colonne standard (accetta anche italiano)
+COLMAP = {
+    "azienda": "company",
+    "nome azienda": "company",
+    "brand": "company",
 
-        X = df[["brand", "category", "size", "base_cost"]]
-        y = df["price"]
+    "modello": "product_model",
+    "modello prodotto": "product_model",
 
-        # Train/test split (just to verify metrics)
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.3, random_state=42
-        )
-        print(f"[INFO] X_train={X_train.shape}, X_test={X_test.shape}")
+    "caratteristica": "feature",
+    "caratteristiche": "feature",
+    "variant": "feature",
 
-        pre = ColumnTransformer(
-            transformers=[
-                ("cat", OneHotEncoder(handle_unknown="ignore"), ["brand", "category"]),
-                ("num", "passthrough", ["size", "base_cost"]),
-            ]
-        )
+    "prezzo": "price",
+    "costo": "price",
+    "price (€)": "price",
+}
 
-        pipe = Pipeline(steps=[
-            ("pre", pre),
-            ("model", LinearRegression())
-        ])
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df.columns = [c.strip().lower() for c in df.columns]
+    rename_map = {c: COLMAP.get(c, c) for c in df.columns}
+    return df.rename(columns=rename_map)
 
-        pipe.fit(X_train, y_train)
-        preds_train = pipe.predict(X_train)
-        preds_test  = pipe.predict(X_test)
+def _build_pipeline() -> Pipeline:
+    cat_features = ["company", "product_model", "feature"]
+    pre = ColumnTransformer(
+        transformers=[("cats", OneHotEncoder(handle_unknown="ignore"), cat_features)],
+        remainder="drop",
+        verbose_feature_names_out=False,
+    )
+    return Pipeline([("pre", pre), ("linreg", LinearRegression())])
 
-        r2_tr  = r2_score(y_train, preds_train)
-        mae_tr = mean_absolute_error(y_train, preds_train)
-        r2_te  = r2_score(y_test, preds_test)
-        mae_te = mean_absolute_error(y_test, preds_test)
+def train_from_csv(csv_path: Path) -> Pipeline:
+    df = pd.read_csv(csv_path)
+    df = normalize_columns(df)
 
-        print(f"[METRICS] TRAIN  R2={r2_tr:.3f} | MAE={mae_tr:.2f}")
-        print(f"[METRICS] TEST   R2={r2_te:.3f} | MAE={mae_te:.2f}")
+    missing = [c for c in REQUIRED_COLS if c not in df.columns]
+    if missing:
+        raise ValueError(f"CSV missing required columns: {missing}. Expected {REQUIRED_COLS}")
 
-        MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        joblib.dump(pipe, MODEL_PATH)
-        print(f"[OK] Saved model → {MODEL_PATH}")
-        print(f"[CHECK] Exists? {MODEL_PATH.exists()} | Size: {MODEL_PATH.stat().st_size if MODEL_PATH.exists() else 'N/A'} bytes")
+    df = df.dropna(subset=REQUIRED_COLS).copy()
+    df["price"] = pd.to_numeric(df["price"], errors="coerce")
+    df = df.dropna(subset=["price"])
 
-    except Exception as e:
-        print("[EXCEPTION] Training failed:")
-        traceback.print_exc()
-        sys.exit(1)
+    X = df[["company", "product_model", "feature"]]
+    y = df["price"]
+
+    pipe = _build_pipeline()
+    pipe.fit(X, y)
+
+    joblib.dump(pipe, MODEL_PATH)
+    return pipe
+
+def load_model() -> Pipeline | None:
+    if MODEL_PATH.exists():
+        return joblib.load(MODEL_PATH)
+    return None
+
+# Demo opzionale: crea un modello fittizio se esegui direttamente il modulo
+def train_and_save_dummy():
+    demo = pd.DataFrame({
+        "company": ["A","A","B","B","C","C"],
+        "product_model": ["M1","M2","M1","M3","M2","M3"],
+        "feature": ["base","pro","base","max","pro","max"],
+        "price": [100,130,110,160,140,170]
+    })
+    pipe = _build_pipeline()
+    pipe.fit(demo[["company","product_model","feature"]], demo["price"])
+    joblib.dump(pipe, MODEL_PATH)
+    print(f"Saved dummy model to: {MODEL_PATH}")
 
 if __name__ == "__main__":
-    train()
+    train_and_save_dummy()
